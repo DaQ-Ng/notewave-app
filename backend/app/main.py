@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, HTTPException
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
+MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
@@ -23,7 +24,11 @@ def upload_audio(file: UploadFile):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid content type: {file.content_type}")
 
-    # Check 3: The file must have a valid MP3 signature
+    # Check 3: The file must not be larger than MAX_FILE_SIZE
+    if file.size is not None and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code = 413, detail = f"File is too large (max {MAX_FILE_SIZE // (1024 * 1024)} MB)")
+
+    # Check 4: The file must have a valid MP3 signature
     header = file.file.read(3)  # Read the first 3 bytes of the file
     if not has_mp3_signature(header):
         raise HTTPException(status_code=400, detail="Invalid MP3 file signature")
