@@ -1,4 +1,7 @@
 from fastapi import FastAPI, UploadFile, HTTPException
+import os
+import shutil
+import tempfile
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
@@ -33,8 +36,16 @@ def upload_audio(file: UploadFile):
     if not has_mp3_signature(header):
         raise HTTPException(status_code=400, detail="Invalid MP3 file signature")
     
+    # Save the upload to a temporary file (deleted automatically at the end of the "with" block)
+    file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
+    with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
+        shutil.copyfileobj(file.file, tmp) # Copy the upload into the temp file
+        tmp.flush() # Make sure all bytes are written to disk
+        saved_size = os.path.getsize(tmp.name) # tmp.name is the temp file's path
+
     return {
         "message": "File uploaded successfully",
         "filename": file.filename,
         "content_type": file.content_type,
+        "saved_bytes": saved_size,
     }
