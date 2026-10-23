@@ -1,12 +1,14 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
 import os
 import shutil
 import tempfile
 import time
+import uuid # Make unique id
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
+jobs: dict[str, dict] = {}
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
@@ -22,13 +24,23 @@ def detect_notes(audio_path: str) -> list[dict]:
         {"note": "E4", "start": 0.5, "end": 1.0},
     ]
 
+def run_job(job_id: str, path: str) -> None:
+    # Run in the background after/ upload has replied
+    try:
+        notes = detect_notes(path)
+        jobs[job_id] = {"status": "done", "notes": notes}
+    except Exception:
+        jobs[job_id] = {"status": "failed", "notes": None}
+    finally:
+        os.remove(path) # Always delete the temp file, even if detection failed
+
 
 @app.get("/")
 def health_check():
     return {"status": "ok", "message": "NoteWave backend is running"}
 
 @app.post("/upload")
-def upload_audio(file: UploadFile):
+def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
     # Check 1: The filename must end with .mp3
     if not file.filename or not file.filename.lower().endswith(".mp3"):
         raise HTTPException(status_code=400, detail="Only .mp3 files are allowed")
@@ -48,16 +60,31 @@ def upload_audio(file: UploadFile):
     
     # Save the upload to a temporary file (deleted automatically at the end of the "with" block)
     file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
-    with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete = False) as tmp:
         shutil.copyfileobj(file.file, tmp) # Copy the upload into the temp file
-        tmp.flush() # Make sure all bytes are written to disk
-        saved_size = os.path.getsize(tmp.name) # tmp.name is the temp file's path
-        notes = detect_notes(tmp.name) #PUT YOUR LOGIC FUNCTION HERE
+        path = tmp.name # Remember where the file is for run_job
+
+    # Create a job and run the slow analysis in the background
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {"status": "processing", "notes": None}
+    background_tasks.add_task(run_job, job_id, path) # writes "run_job(job_id, path)" on a to-do list. For later use after return like save it after the upload_audio function is done
 
     return {
-        "message": "File uploaded successfully",
+        "message": "Upload accepted, processing started",
         "filename": file.filename,
-        "content_type": file.content_type,
-        "saved_bytes": saved_size,
-        "notes": notes,
+        "job_id": job_id,
+        "status": "processing",
+    }
+
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str):
+    # Let the browser check on a job processing, done (with notess), or failed
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return{
+        "job_id": job_id,
+        "status": job["status"],
+        "notes": job["notes"],
     }
