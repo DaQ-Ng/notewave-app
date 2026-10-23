@@ -1,4 +1,6 @@
 from fastapi import FastAPI, UploadFile, HTTPException
+# Import our function for loading audio information.
+from app.audio_processing import load_audio_info
 import os
 import shutil
 import tempfile
@@ -37,15 +39,38 @@ def upload_audio(file: UploadFile):
         raise HTTPException(status_code=400, detail="Invalid MP3 file signature")
     
     # Save the upload to a temporary file (deleted automatically at the end of the "with" block)
-    file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
-    with tempfile.NamedTemporaryFile(suffix=".mp3") as tmp:
-        shutil.copyfileobj(file.file, tmp) # Copy the upload into the temp file
-        tmp.flush() # Make sure all bytes are written to disk
-        saved_size = os.path.getsize(tmp.name) # tmp.name is the temp file's path
+    # Return to the beginning after reading the MP3 signature.
+    file.file.seek(0)
 
+    # Create a temporary folder that is automatically removed afterward.
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = os.path.join(temp_dir, "upload.mp3")
+
+        # Save the uploaded bytes, then close the file before loading it.
+        # Closing it first allows librosa to reopen it on Windows.
+        with open(temp_path, "wb") as tmp:
+            shutil.copyfileobj(file.file, tmp)
+
+        # Find the saved file's size in bytes.
+        saved_size = os.path.getsize(temp_path)
+
+        # Decode the audio while the temporary file still exists.
+        try:
+            audio_info = load_audio_info(temp_path)
+        except (ValueError, RuntimeError, EOFError) as error:
+            # Reject audio that cannot be decoded.
+            raise HTTPException(
+                status_code=400,
+                detail="Could not decode the uploaded audio",
+            ) from error
+
+    # The temporary folder and file have now been deleted.
     return {
-        "message": "File uploaded successfully",
+        "message": "Audio loaded successfully",
         "filename": file.filename,
         "content_type": file.content_type,
         "saved_bytes": saved_size,
+        "sample_rate": audio_info["sample_rate"],
+        "duration_seconds": audio_info["duration_seconds"],
+        "sample_count": audio_info["sample_count"],
     }
