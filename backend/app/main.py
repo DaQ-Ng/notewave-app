@@ -4,11 +4,13 @@ import shutil
 import tempfile
 import time
 import uuid # Make unique id
+import hashlib
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 jobs: dict[str, dict] = {}
+results_cache: dict[str, list[dict]] = {}
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
@@ -18,17 +20,18 @@ def has_mp3_signature(header: bytes) -> bool:
 
 def detect_notes(audio_path: str) -> list[dict]:
     # Fake analyzer until the team's real one is ready: pretends to take 10 seconds
-    time.sleep(10)
+    time.sleep(10) #<-------- REMOVE THIS WHEN THE LOGIC FILE IS READY
     return [
         {"note": "C4", "start": 0.0, "end": 0.5},
         {"note": "E4", "start": 0.5, "end": 1.0},
     ]
 
-def run_job(job_id: str, path: str) -> None:
+def run_job(job_id: str, path: str, file_hash: str) -> None:
     # Run in the background after/ upload has replied
     try:
         notes = detect_notes(path)
         jobs[job_id] = {"status": "done", "notes": notes}
+        results_cache[file_hash] = notes
     except Exception:
         jobs[job_id] = {"status": "failed", "notes": None}
     finally:
@@ -60,20 +63,34 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
     
     # Save the upload to a temporary file (deleted automatically at the end of the "with" block)
     file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
+    file_hash = hashlib.sha256(file.file.read()).hexdigest()
+    job_id = str(uuid.uuid4())
+    if file_hash in results_cache:
+        jobs[job_id] = {"status": "done", "notes": results_cache[file_hash]}
+        return {
+            "message": "Already analyzed, returning cache result",
+            "filename": file.filename,
+            "job_id": job_id,
+            "status": "done",
+            "file_hash": file_hash,
+            "notes": results_cache[file_hash]
+        }
+    file.file.seek(0)
+
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete = False) as tmp:
         shutil.copyfileobj(file.file, tmp) # Copy the upload into the temp file
         path = tmp.name # Remember where the file is for run_job
 
     # Create a job and run the slow analysis in the background
-    job_id = str(uuid.uuid4())
     jobs[job_id] = {"status": "processing", "notes": None}
-    background_tasks.add_task(run_job, job_id, path) # writes "run_job(job_id, path)" on a to-do list. For later use after return like save it after the upload_audio function is done
+    background_tasks.add_task(run_job, job_id, path, file_hash) # writes "run_job(job_id, path)" on a to-do list. For later use after return like save it after the upload_audio function is done
 
     return {
         "message": "Upload accepted, processing started",
         "filename": file.filename,
         "job_id": job_id,
         "status": "processing",
+        "file_hash": file_hash,
     }
 
 @app.get("/jobs/{job_id}")
