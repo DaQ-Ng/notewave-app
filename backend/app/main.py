@@ -1,6 +1,8 @@
 from fastapi import FastAPI, UploadFile, HTTPException
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
+# import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import shutil
 import tempfile
@@ -8,6 +10,13 @@ import tempfile
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:8000"], #change to real website later
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)

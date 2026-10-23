@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import "./App.css";
+const API_URL = "http://127.0.0.1:8000";
 
 // Our test constants: edit these to try different notes
 const MOCK_NOTES = ["C4", "E4", "G4", "C5", "G4", "E4", "C4"];
@@ -11,14 +12,29 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [noteIndex, setNoteIndex] = useState(null); // which constant is active
   const [testing, setTesting] = useState(false);
+  const [info, setInfo] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const audioRef = useRef(null);
   const timerRef = useRef(null);
+
+  async function uploadToBackend(file) {
+    const formData = new FormData();
+    formData.append("file",file);
+    const res = await fetch("http://127.0.0.1:8000/upload", {
+      method:"POST",
+      body:formData,
+    });
+    const data = await res.json();
+    console.log(data);
+  }
 
   function loadFile(file) {
     if (file && file.name.toLowerCase().endsWith(".mp3")) {
       setAudioUrl(URL.createObjectURL(file));
       setFileName(file.name);
       setIsPlaying(false);
+      uploadToBackend(file);
     }
   }
 
