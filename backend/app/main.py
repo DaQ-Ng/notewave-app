@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, HTTPException
 import os
 import shutil
 import tempfile
+import time
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
@@ -12,6 +13,15 @@ def has_mp3_signature(header: bytes) -> bool:
     if header.startswith(b"ID3"):
         return True
     return len(header) >= 2 and header[0] == 0xFF and header[1] >= 0xE0
+
+def detect_notes(audio_path: str) -> list[dict]:
+    # Fake analyzer until the team's real one is ready: pretends to take 10 seconds
+    time.sleep(10)
+    return [
+        {"note": "C4", "start": 0.0, "end": 0.5},
+        {"note": "E4", "start": 0.5, "end": 1.0},
+    ]
+
 
 @app.get("/")
 def health_check():
@@ -42,10 +52,12 @@ def upload_audio(file: UploadFile):
         shutil.copyfileobj(file.file, tmp) # Copy the upload into the temp file
         tmp.flush() # Make sure all bytes are written to disk
         saved_size = os.path.getsize(tmp.name) # tmp.name is the temp file's path
+        notes = detect_notes(tmp.name) #PUT YOUR LOGIC FUNCTION HERE
 
     return {
         "message": "File uploaded successfully",
         "filename": file.filename,
         "content_type": file.content_type,
         "saved_bytes": saved_size,
+        "notes": notes,
     }
