@@ -13,8 +13,10 @@ import redis
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
-results_cache: dict[str, dict] = {}
+CACHE_TTL_SECONDS = 86400
+JOB_TTL_SECONDS = 3600
 redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
+
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
@@ -23,10 +25,20 @@ def has_mp3_signature(header: bytes) -> bool:
     return len(header) >= 2 and header[0] == 0xFF and header[1] >= 0xE0
 
 def save_job(job_id: str, job: dict) -> None:
-   redis_client.set(f"job:{job_id}", json.dumps(job)) 
+   redis_client.set(f"job:{job_id}", json.dumps(job), ex = JOB_TTL_SECONDS) 
 
 def load_job(job_id: str) -> dict | None:
     raw = redis_client.get(f"job:{job_id}")
+    if raw is None:
+        return None
+    else:
+        return json.loads(raw)
+
+def save_cached_result(file_hash: str, result: dict) -> None:
+    redis_client.set(f"cache:{file_hash}", json.dumps(result), ex=CACHE_TTL_SECONDS)
+
+def load_cached_result(file_hash: str) -> dict | None:
+    raw = redis_client.get(f"cache:{file_hash}")
     if raw is None:
         return None
     else:
@@ -46,7 +58,7 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
         audio = load_audio_info(path)
         notes = detect_notes(path)
         save_job(job_id, {"status": "done", "notes": notes, "audio": audio})
-        results_cache[file_hash] = {"notes": notes, "audio": audio}
+        save_cached_result(file_hash, {"notes": notes, "audio": audio})
     except Exception:
         save_job(job_id, {"status": "failed", "notes": None, "audio": None})
     finally:
@@ -80,8 +92,9 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
     file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
     file_hash = hashlib.sha256(file.file.read()).hexdigest()
     job_id = str(uuid.uuid4())
-    if file_hash in results_cache:
-        cached = results_cache[file_hash]
+
+    cached = load_cached_result(file_hash)
+    if cached is not None:
         save_job(job_id,{"status": "done", "notes": cached["notes"], "audio": cached["audio"]})
         return {
             "message": "Already analyzed, returning cache result",
