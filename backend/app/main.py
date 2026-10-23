@@ -5,18 +5,31 @@ import tempfile
 import time
 import uuid # Make unique id
 import hashlib
+import json
+import redis
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 jobs: dict[str, dict] = {}
 results_cache: dict[str, list[dict]] = {}
+redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
     if header.startswith(b"ID3"):
         return True
     return len(header) >= 2 and header[0] == 0xFF and header[1] >= 0xE0
+
+def save_job(job_id: str, job: dict) -> None:
+   redis_client.set(f"job:{job_id}", json.dumps(job)) 
+
+def load_job(job_id: str) -> dict | None:
+    raw = redis_client.get(f"job:{job_id}")
+    if raw is None:
+        return None
+    else:
+        return json.loads(raw)
 
 def detect_notes(audio_path: str) -> list[dict]:
     # Fake analyzer until the team's real one is ready: pretends to take 10 seconds
@@ -30,10 +43,10 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
     # Run in the background after/ upload has replied
     try:
         notes = detect_notes(path)
-        jobs[job_id] = {"status": "done", "notes": notes}
+        save_job(job_id, {"status": "done", "notes": notes})
         results_cache[file_hash] = notes
     except Exception:
-        jobs[job_id] = {"status": "failed", "notes": None}
+        save_job(job_id, {"status": "failed", "notes": None})
     finally:
         os.remove(path) # Always delete the temp file, even if detection failed
 
@@ -66,7 +79,7 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
     file_hash = hashlib.sha256(file.file.read()).hexdigest()
     job_id = str(uuid.uuid4())
     if file_hash in results_cache:
-        jobs[job_id] = {"status": "done", "notes": results_cache[file_hash]}
+        save_job(job_id,{"status": "done", "notes": results_cache[file_hash]})
         return {
             "message": "Already analyzed, returning cache result",
             "filename": file.filename,
@@ -82,7 +95,7 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
         path = tmp.name # Remember where the file is for run_job
 
     # Create a job and run the slow analysis in the background
-    jobs[job_id] = {"status": "processing", "notes": None}
+    save_job(job_id, {"status": "processing", "notes": None})
     background_tasks.add_task(run_job, job_id, path, file_hash) # writes "run_job(job_id, path)" on a to-do list. For later use after return like save it after the upload_audio function is done
 
     return {
@@ -96,7 +109,7 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str):
     # Let the browser check on a job processing, done (with notess), or failed
-    job = jobs.get(job_id)
+    job = load_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     
