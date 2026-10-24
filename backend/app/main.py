@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, HTTPException
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 import os
@@ -9,6 +9,8 @@ import uuid # Make unique id
 import hashlib
 import json
 import redis
+from rq import Queue
+
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
@@ -16,7 +18,8 @@ MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 CACHE_TTL_SECONDS = 86400
 JOB_TTL_SECONDS = 3600
 redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
-
+queue_redis = redis.Redis(host="localhost", port=6379) # creates the connection to Redis
+job_queue = Queue(connection=queue_redis) # creates a queue and tells it which connection talk through
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
@@ -70,7 +73,7 @@ def health_check():
     return {"status": "ok", "message": "NoteWave backend is running"}
 
 @app.post("/upload")
-def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
+def upload_audio(file: UploadFile):
     # Check 1: The filename must end with .mp3
     if not file.filename or not file.filename.lower().endswith(".mp3"):
         raise HTTPException(status_code=400, detail="Only .mp3 files are allowed")
@@ -113,8 +116,7 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
 
     # Create a job and run the slow analysis in the background
     save_job(job_id, {"status": "processing", "notes": None, "audio": None})
-    background_tasks.add_task(run_job, job_id, path, file_hash) # writes "run_job(job_id, path)" on a to-do list. For later use after return like save it after the upload_audio function is done
-
+    job_queue.enqueue(run_job, job_id, path, file_hash)
     return {
         "message": "Upload accepted, processing started",
         "filename": file.filename,
