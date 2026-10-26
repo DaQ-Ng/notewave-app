@@ -1,6 +1,11 @@
 from fastapi import FastAPI, UploadFile, HTTPException
+from .transcription import router as transcription_router
 
 app = FastAPI(title="NoteWave API")
+
+# Include your transcription router from transcription.py
+app.include_router(transcription_router)
+
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 
 def has_mp3_signature(header: bytes) -> bool:
