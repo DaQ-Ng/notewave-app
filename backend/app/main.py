@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, HTTPException
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
@@ -11,12 +11,24 @@ import uuid # Make unique id
 import hashlib
 import json
 import redis
+from rq import Queue
+
 
 app = FastAPI(title="NoteWave API")
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
-results_cache: dict[str, dict] = {}
+CACHE_TTL_SECONDS = 86400
+JOB_TTL_SECONDS = 3600
 redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
+queue_redis = redis.Redis(host="localhost", port=6379) # creates the connection to Redis
+job_queue = Queue(connection=queue_redis) # creates a queue and tells it which connection talk through
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:8000"], #change to real website later
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,10 +44,20 @@ def has_mp3_signature(header: bytes) -> bool:
     return len(header) >= 2 and header[0] == 0xFF and header[1] >= 0xE0
 
 def save_job(job_id: str, job: dict) -> None:
-   redis_client.set(f"job:{job_id}", json.dumps(job)) 
+   redis_client.set(f"job:{job_id}", json.dumps(job), ex = JOB_TTL_SECONDS) 
 
 def load_job(job_id: str) -> dict | None:
     raw = redis_client.get(f"job:{job_id}")
+    if raw is None:
+        return None
+    else:
+        return json.loads(raw)
+
+def save_cached_result(file_hash: str, result: dict) -> None:
+    redis_client.set(f"cache:{file_hash}", json.dumps(result), ex=CACHE_TTL_SECONDS)
+
+def load_cached_result(file_hash: str) -> dict | None:
+    raw = redis_client.get(f"cache:{file_hash}")
     if raw is None:
         return None
     else:
@@ -55,7 +77,7 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
         audio = load_audio_info(path)
         notes = detect_notes(path)
         save_job(job_id, {"status": "done", "notes": notes, "audio": audio})
-        results_cache[file_hash] = {"notes": notes, "audio": audio}
+        save_cached_result(file_hash, {"notes": notes, "audio": audio})
     except Exception:
         save_job(job_id, {"status": "failed", "notes": None, "audio": None})
     finally:
@@ -67,7 +89,7 @@ def health_check():
     return {"status": "ok", "message": "NoteWave backend is running"}
 
 @app.post("/upload")
-def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
+def upload_audio(file: UploadFile):
     # Check 1: The filename must end with .mp3
     if not file.filename or not file.filename.lower().endswith(".mp3"):
         raise HTTPException(status_code=400, detail="Only .mp3 files are allowed")
@@ -89,8 +111,9 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
     file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
     file_hash = hashlib.sha256(file.file.read()).hexdigest()
     job_id = str(uuid.uuid4())
-    if file_hash in results_cache:
-        cached = results_cache[file_hash]
+
+    cached = load_cached_result(file_hash)
+    if cached is not None:
         save_job(job_id,{"status": "done", "notes": cached["notes"], "audio": cached["audio"]})
         return {
             "message": "Already analyzed, returning cache result",
@@ -109,8 +132,7 @@ def upload_audio(file: UploadFile, background_tasks: BackgroundTasks):
 
     # Create a job and run the slow analysis in the background
     save_job(job_id, {"status": "processing", "notes": None, "audio": None})
-    background_tasks.add_task(run_job, job_id, path, file_hash) # writes "run_job(job_id, path)" on a to-do list. For later use after return like save it after the upload_audio function is done
-
+    job_queue.enqueue(run_job, job_id, path, file_hash)
     return {
         "message": "Upload accepted, processing started",
         "filename": file.filename,
