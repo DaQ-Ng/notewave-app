@@ -40,3 +40,12 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+
+#sudin stuff
+venv/
+backend/venv/
+__pycache__/
+*.mp3
+*.mid
+temp_*

@@ -1,4 +1,7 @@
 from fastapi import FastAPI, UploadFile, HTTPException
+<<<<<<< HEAD
+from .transcription import router as transcription_router
+=======
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
@@ -13,8 +16,13 @@ import json
 import redis
 from rq import Queue
 
+>>>>>>> 27344a3b3d1a6a2ec204537b1dd5fcaa897a0cd1
 
 app = FastAPI(title="NoteWave API")
+
+# Include your transcription router from transcription.py
+app.include_router(transcription_router)
+
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 CACHE_TTL_SECONDS = 86400
