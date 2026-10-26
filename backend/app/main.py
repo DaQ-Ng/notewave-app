@@ -1,6 +1,8 @@
 from fastapi import FastAPI, UploadFile, HTTPException
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
+# import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import shutil
 import tempfile
@@ -20,6 +22,13 @@ JOB_TTL_SECONDS = 3600
 redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
 queue_redis = redis.Redis(host="localhost", port=6379) # creates the connection to Redis
 job_queue = Queue(connection=queue_redis) # creates a queue and tells it which connection talk through
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:8000"], #change to real website later
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)

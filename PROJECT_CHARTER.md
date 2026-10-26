@@ -2,8 +2,8 @@
 
 ## Team Information
 **Project Manager:** {{PM_NAME}} (@{{PM_GITHUB}})
-**Team Size:** {{TEAM_SIZE}} members
-**Semester:** {{SEMESTER}} {{YEAR}}
+**Team Size:** {{5}} members
+**Semester:** {{Fall}} {{2026}}
 
 ## Project Vision
 **Problem Statement:** What problem does this solve?
