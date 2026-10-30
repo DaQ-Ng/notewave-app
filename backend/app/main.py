@@ -1,7 +1,5 @@
 from fastapi import FastAPI, UploadFile, HTTPException
-<<<<<<< HEAD
 from .transcription import router as transcription_router
-=======
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
@@ -16,7 +14,6 @@ import json
 import redis
 from rq import Queue
 
->>>>>>> 27344a3b3d1a6a2ec204537b1dd5fcaa897a0cd1
 
 app = FastAPI(title="NoteWave API")
 
@@ -38,13 +35,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:8000"], #change to real website later
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 def has_mp3_signature(header: bytes) -> bool:
     # Return True if the header starts with "ID3" or an MP3 frame header (0xFF, then >= 0xE0)
     if header.startswith(b"ID3"):
@@ -52,7 +42,7 @@ def has_mp3_signature(header: bytes) -> bool:
     return len(header) >= 2 and header[0] == 0xFF and header[1] >= 0xE0
 
 def save_job(job_id: str, job: dict) -> None:
-   redis_client.set(f"job:{job_id}", json.dumps(job), ex = JOB_TTL_SECONDS) 
+   redis_client.set(f"job:{job_id}", json.dumps(job), ex = JOB_TTL_SECONDS)
 
 def load_job(job_id: str) -> dict | None:
     raw = redis_client.get(f"job:{job_id}")
@@ -114,7 +104,7 @@ def upload_audio(file: UploadFile):
     header = file.file.read(3)  # Read the first 3 bytes of the file
     if not has_mp3_signature(header):
         raise HTTPException(status_code=400, detail="Invalid MP3 file signature")
-    
+
     # Hash the upload, then save it to a temp file that run_job deletes
     file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
     file_hash = hashlib.sha256(file.file.read()).hexdigest()
@@ -155,7 +145,7 @@ def get_job(job_id: str):
     job = load_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     return{
         "job_id": job_id,
         "status": job["status"],
