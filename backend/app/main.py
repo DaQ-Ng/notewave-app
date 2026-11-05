@@ -1,5 +1,10 @@
 from fastapi import FastAPI, UploadFile, HTTPException
-from .transcription import router as transcription_router
+# basic-pitch is optional: without it, the API still starts but /api/transcribe is off
+try:
+    from .transcription import router as transcription_router
+except ImportError as e:
+    print(f"Transcription disabled ({e}). Install basic-pitch to enable /api/transcribe.")
+    transcription_router = None
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
@@ -17,8 +22,9 @@ from rq import Queue
 
 app = FastAPI(title="NoteWave API")
 
-# Include your transcription router from transcription.py
-app.include_router(transcription_router)
+# Include your transcription router from transcription.py (only if basic-pitch is installed)
+if transcription_router is not None:
+    app.include_router(transcription_router)
 
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
