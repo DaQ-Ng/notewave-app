@@ -1,9 +1,14 @@
+import logging
 from fastapi import FastAPI, UploadFile, HTTPException
+
+# One logger for the whole backend. Warnings and errors show up in the uvicorn / rq worker terminal.
+logger = logging.getLogger("notewave")
+
 # basic-pitch is optional: without it, the API still starts but /api/transcribe is off
 try:
     from .transcription import router as transcription_router
 except ImportError as e:
-    print(f"Transcription disabled ({e}). Install basic-pitch to enable /api/transcribe.")
+    logger.warning("Transcription disabled (%s). Install basic-pitch to enable /api/transcribe.", e)
     transcription_router = None
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
@@ -106,6 +111,8 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
         save_job(job_id, {"status": "done", "notes": notes, "audio": audio})
         save_cached_result(file_hash, {"notes": notes, "audio": audio})
     except Exception:
+        # Log the full error and traceback so a "failed" job can actually be debugged
+        logger.exception("Job %s failed while analyzing %s", job_id, path)
         save_job(job_id, {"status": "failed", "notes": None, "audio": None})
     finally:
         os.remove(path) # Always delete the temp file, even if detection failed
@@ -139,23 +146,32 @@ def upload_audio(file: UploadFile):
     path, file_hash = save_upload_to_temp(file)
     job_id = str(uuid.uuid4())
 
-    cached = load_cached_result(file_hash)
-    if cached is not None:
-        os.remove(path) # Already analyzed, so the temp file isn't needed
-        save_job(job_id,{"status": "done", "notes": cached["notes"], "audio": cached["audio"]})
-        return {
-            "message": "Already analyzed, returning cache result",
-            "filename": file.filename,
-            "job_id": job_id,
-            "status": "done",
-            "file_hash": file_hash,
-            "notes": cached["notes"],
-            "audio": cached["audio"],
-        }
+    # From here on, Redis can fail. If it does, delete the temp file (otherwise nothing ever would)
+    # and tell the client to retry with a 503 instead of crashing with a 500.
+    try:
+        cached = load_cached_result(file_hash)
+        if cached is not None:
+            os.remove(path) # Already analyzed, so the temp file isn't needed
+            save_job(job_id,{"status": "done", "notes": cached["notes"], "audio": cached["audio"]})
+            return {
+                "message": "Already analyzed, returning cache result",
+                "filename": file.filename,
+                "job_id": job_id,
+                "status": "done",
+                "file_hash": file_hash,
+                "notes": cached["notes"],
+                "audio": cached["audio"],
+            }
 
-    # Create a job and run the slow analysis in the background
-    save_job(job_id, {"status": "processing", "notes": None, "audio": None})
-    job_queue.enqueue(run_job, job_id, path, file_hash)
+        # Create a job and run the slow analysis in the background
+        save_job(job_id, {"status": "processing", "notes": None, "audio": None})
+        job_queue.enqueue(run_job, job_id, path, file_hash)
+    except Exception:
+        if os.path.exists(path):
+            os.remove(path)
+        logger.exception("Could not queue job %s", job_id)
+        raise HTTPException(status_code=503, detail="Job queue is unavailable, try again later")
+
     return {
         "message": "Upload accepted, processing started",
         "filename": file.filename,
