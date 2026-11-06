@@ -16,12 +16,18 @@ CORS allows `http://localhost:5173` (the Vite dev server) and `http://localhost:
 
 ## GET /
 
-Health check.
+Health check. Also checks that Redis is reachable, since uploads and jobs need it.
 
 **Response 200**
 
 ```json
 { "status": "ok", "message": "NoteWave backend is running" }
+```
+
+**Response 503: Redis is down**
+
+```json
+{ "status": "error", "message": "Redis is unreachable" }
 ```
 
 ---
@@ -75,6 +81,7 @@ Upload an MP3 for analysis.
 | 400  | `Invalid content type: ...`     | not `audio/mpeg` or `audio/mp3` |
 | 400  | `Invalid MP3 file signature`    | file isn't really an MP3        |
 | 413  | `File is too large (max 25 MB)` | file over 25 MB                 |
+| 503  | `Job queue is unavailable, try again later` | Redis is down; nothing was saved, safe to retry |
 
 ---
 

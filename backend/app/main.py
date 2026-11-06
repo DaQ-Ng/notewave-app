@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 
 # One logger for the whole backend. Warnings and errors show up in the uvicorn / rq worker terminal.
 logger = logging.getLogger("notewave")
@@ -120,6 +121,15 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
 
 @app.get("/")
 def health_check():
+    # Uploads and jobs need Redis, so "healthy" means Redis answers too
+    try:
+        redis_client.ping()
+    except redis.RedisError:
+        logger.warning("Health check: Redis is unreachable at %s", REDIS_URL)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": "Redis is unreachable"},
+        )
     return {"status": "ok", "message": "NoteWave backend is running"}
 
 @app.post("/upload")
