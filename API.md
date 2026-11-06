@@ -155,3 +155,7 @@ From `backend/` with the venv active:
 1. `sudo service redis-server start`
 2. `uvicorn app.main:app --reload`
 3. `rq worker` (in a second terminal)
+
+Redis defaults to `redis://localhost:6379/0`. To use a different Redis, set `REDIS_URL`
+(see `backend/.env.example`) in both terminals, and start the worker with
+`rq worker --url "$REDIS_URL"` so it reads from the same queue.

@@ -30,8 +30,10 @@ MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 CHUNK_SIZE = 1024 * 1024 # Read uploads 1 MB at a time
 CACHE_TTL_SECONDS = 86400
 JOB_TTL_SECONDS = 3600
-redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
-queue_redis = redis.Redis(host="localhost", port=6379) # creates the connection to Redis
+# Where Redis lives. Set REDIS_URL to point somewhere else (see backend/.env.example); defaults to local Redis.
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+queue_redis = redis.Redis.from_url(REDIS_URL) # creates the connection to Redis
 job_queue = Queue(connection=queue_redis) # creates a queue and tells it which connection talk through
 
 app.add_middleware(
