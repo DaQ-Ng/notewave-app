@@ -1,5 +1,6 @@
 # Extra packages for running the tests: pip install -r requirements-dev.txt
--r requirements.txt
+# Only the test tools; install requirements.txt separately (basic-pitch can fail on new Python versions,
+# and the tests don't need it).
 pytest
 httpx
 fakeredis
