@@ -1,7 +1,5 @@
 from fastapi import FastAPI, UploadFile, HTTPException
-<<<<<<< HEAD
 from .transcription import router as transcription_router
-=======
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
@@ -16,7 +14,6 @@ import json
 import redis
 from rq import Queue
 
->>>>>>> 27344a3b3d1a6a2ec204537b1dd5fcaa897a0cd1
 
 app = FastAPI(title="NoteWave API")
 
