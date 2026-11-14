@@ -10,7 +10,9 @@ Interactive docs: `http://localhost:8000/docs`
 3. Otherwise, poll `GET /jobs/{job_id}` every 1–2 seconds until `status` is `done` or `failed`.
 
 Requires Redis and a worker running: see "Running the backend" below.
-CORS allows `http://localhost:5173` (the Vite dev server) and `http://localhost:3000`.
+CORS allows `http://localhost:5173` (the Vite dev server) and `http://localhost:3000` by default.
+To allow other sites (for example the deployed frontend), set `ALLOWED_ORIGINS` to a comma-separated
+list (see `backend/.env.example`).
 
 ---
 

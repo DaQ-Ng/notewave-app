@@ -42,9 +42,18 @@ redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 queue_redis = redis.Redis.from_url(REDIS_URL) # creates the connection to Redis
 job_queue = Queue(connection=queue_redis) # creates a queue and tells it which connection talk through
 
+# Which websites may call this API from a browser. Set ALLOWED_ORIGINS to a comma-separated list
+# (see backend/.env.example), e.g. the deployed frontend URL. Defaults to the local dev servers.
+DEFAULT_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:8000"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:8000"], #change to real website later
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
