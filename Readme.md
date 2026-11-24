@@ -3,7 +3,7 @@
 Upload a recording and see the notes in it. NoteWave turns an MP3 into a list of detected notes
 (pitch, start, end) and shows them on an interactive waveform and piano roll that follow playback.
 
-Built as a team project for ACM at UTA. This fork is maintained by
+Built as a team project for ACM at UTA. This version is maintained by
 [Dat Nguyen (@DaQ-Ng)](https://github.com/DaQ-Ng), who built the backend.
 
 ## How it works
@@ -161,7 +161,7 @@ Team project by ACM at UTA members. The original repository is
 [acmuta/notewave](https://github.com/acmuta/notewave).
 
 - **Dat Nguyen**: backend (FastAPI app, upload validation, Redis job queue and cache, RQ worker,
-  tests, Docker, API docs) and wiring the frontend to the async pipeline in this fork
+  tests, Docker, API docs) and wiring the frontend to the async pipeline in this version
 - **Rishav**: frontend design (waveform, piano roll, layout)
 - **Sudin**: note detection with basic-pitch
 - **kreyescse**: initial frontend and frontend-to-backend connection
