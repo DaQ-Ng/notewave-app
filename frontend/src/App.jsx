@@ -1,10 +1,59 @@
 
 import { useEffect, useRef, useState } from "react";
 import PianoRoll from "./components/pianoroll";
-import Waveform from "./components/Waveform";
+import Waveform from "./components/waveform";
 import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
+const POLL_INTERVAL_MS = 1000;
+
+// Wait `ms` milliseconds, but stop early (with an AbortError) if the upload is cancelled
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
+}
+
+// Read a JSON response, turning a non-2xx status into an Error with the backend's message
+async function readJson(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      typeof data.detail === "string"
+        ? data.detail
+        : `Request failed (${response.status}).`
+    );
+  }
+  return data;
+}
+
+// Upload the file, then poll /jobs/{id} until the background worker finishes.
+// A file analyzed before comes back "done" straight from the cache, with no polling.
+async function analyzeFile(file, signal) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  let job = await readJson(
+    await fetch(`${API_URL}/upload`, { method: "POST", body: formData, signal })
+  );
+
+  while (job.status === "processing") {
+    await wait(POLL_INTERVAL_MS, signal);
+    job = await readJson(
+      await fetch(`${API_URL}/jobs/${job.job_id}`, { signal })
+    );
+  }
+
+  if (job.status === "failed") {
+    throw new Error("Analysis failed on the server. Check the worker terminal.");
+  }
+
+  return job.notes;
+}
 
 function formatTime(value) {
   if (!Number.isFinite(value) || value < 0) return "0:00";
@@ -64,30 +113,10 @@ function App() {
     setAnalyzed(false);
     setError("");
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const response = await fetch(
-        `${API_URL}/api/transcribe`,
-        {
-          method: "POST",
-          body: formData,
-          signal: controller.signal,
-        }
-      );
+      const detected = await analyzeFile(file, controller.signal);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : `Analysis failed (${response.status}).`
-        );
-      }
-
-      if (!Array.isArray(data.notes)) {
+      if (!Array.isArray(detected)) {
         throw new Error(
           "The backend returned an unexpected response."
         );
@@ -96,7 +125,7 @@ function App() {
       if (controller.signal.aborted) return;
 
       setNotes(
-        [...data.notes].sort((a, b) => a.start - b.start)
+        [...detected].sort((a, b) => a.start - b.start)
       );
       setAnalyzed(true);
     } catch (err) {

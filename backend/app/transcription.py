@@ -15,6 +15,55 @@ def get_pitch_class(note_name: str) -> str:
     """Extracts the note letter/accidental without the octave (e.g., 'E4' -> 'E', 'C#3' -> 'C#')."""
     return re.sub(r'-?\d+$', '', note_name)
 
+def extract_notes(audio_path: str) -> list[dict]:
+    """Run basic-pitch on an audio file and return the filtered note list.
+
+    Pure analysis, no HTTP: both /api/transcribe and the background job in main.py call this.
+    """
+    # 1. Run basic-pitch prediction
+    _, midi_data, _ = predict(audio_path)
+
+    # 2. Extract raw notes and group velocities by pitch class (A, A#, B, C, etc.)
+    raw_notes = []
+    velocities_by_class = defaultdict(list)
+
+    for instrument in midi_data.instruments:
+        for note in instrument.notes:
+            note_name = pretty_midi.note_number_to_name(note.pitch)  # e.g., "C4", "A#3"
+            pitch_class = get_pitch_class(note_name)                # e.g., "C", "A#"
+            velocity = int(note.velocity)
+
+            raw_notes.append({
+                "note": note_name,
+                "pitch": int(note.pitch),
+                "start": float(note.start),
+                "end": float(note.end),
+                "velocity": velocity,
+                "_pitch_class": pitch_class
+            })
+            velocities_by_class[pitch_class].append(velocity)
+
+    # 3. Calculate the mean velocity for each pitch class
+    mean_velocities = {
+        pitch_class: sum(vels) / len(vels)
+        for pitch_class, vels in velocities_by_class.items()
+    }
+
+    # 4. Filter out notes that are >= 40% away from their pitch class's mean velocity
+    filtered_notes = []
+    for n in raw_notes:
+        mean_vel = mean_velocities[n["_pitch_class"]]
+        if mean_vel > 0:
+            percent_diff = abs(n["velocity"] - mean_vel) / mean_vel
+            if percent_diff >= DEVIATION_THRESHOLD:
+                continue  # Skip overtone / outlier note
+
+        # Remove temporary helper key before returning
+        del n["_pitch_class"]
+        filtered_notes.append(n)
+
+    return filtered_notes
+
 @router.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
     # Validate file extension
@@ -30,49 +79,10 @@ async def transcribe_audio(file: UploadFile = File(...)):
             tmp_input.write(content)
             tmp_input_path = tmp_input.name
 
-        # 2. Run basic-pitch prediction
-        _, midi_data, _ = predict(tmp_input_path)
+        # 2. Detect the notes
+        filtered_notes = extract_notes(tmp_input_path)
 
-        # 3. Extract raw notes and group velocities by pitch class (A, A#, B, C, etc.)
-        raw_notes = []
-        velocities_by_class = defaultdict(list)
-
-        for instrument in midi_data.instruments:
-            for note in instrument.notes:
-                note_name = pretty_midi.note_number_to_name(note.pitch)  # e.g., "C4", "A#3"
-                pitch_class = get_pitch_class(note_name)                # e.g., "C", "A#"
-                velocity = int(note.velocity)
-
-                raw_notes.append({
-                    "note": note_name,
-                    "pitch": int(note.pitch),
-                    "start": float(note.start),
-                    "end": float(note.end),
-                    "velocity": velocity,
-                    "_pitch_class": pitch_class
-                })
-                velocities_by_class[pitch_class].append(velocity)
-
-        # 4. Calculate the mean velocity for each pitch class
-        mean_velocities = {
-            pitch_class: sum(vels) / len(vels)
-            for pitch_class, vels in velocities_by_class.items()
-        }
-
-        # 5. Filter out notes that are >= 40% away from their pitch class's mean velocity
-        filtered_notes = []
-        for n in raw_notes:
-            mean_vel = mean_velocities[n["_pitch_class"]]
-            if mean_vel > 0:
-                percent_diff = abs(n["velocity"] - mean_vel) / mean_vel
-                if percent_diff >= DEVIATION_THRESHOLD:
-                    continue  # Skip overtone / outlier note
-
-            # Remove temporary helper key before returning
-            del n["_pitch_class"]
-            filtered_notes.append(n)
-
-        # 6. Return pure JSON data
+        # 3. Return pure JSON data
         return {
             "filename": file.filename,
             "total_notes": len(filtered_notes),

@@ -17,7 +17,6 @@ from app.audio_processing import load_audio_info
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import tempfile
-import time
 import uuid # Make unique id
 import hashlib
 import json
@@ -106,12 +105,11 @@ def load_cached_result(file_hash: str) -> dict | None:
         return json.loads(raw)
 
 def detect_notes(audio_path: str) -> list[dict]:
-    # Fake analyzer until the team's real one is ready: pretends to take 10 seconds
-    time.sleep(10) #<-------- REMOVE THIS WHEN THE LOGIC FILE IS READY
-    return [
-        {"note": "C4", "start": 0.0, "end": 0.5},
-        {"note": "E4", "start": 0.5, "end": 1.0},
-    ]
+    # Real note detection (basic-pitch), shared with /api/transcribe.
+    # Imported here, not at the top, so the API still starts without basic-pitch;
+    # only the RQ worker that actually runs jobs needs it installed.
+    from .transcription import extract_notes
+    return extract_notes(audio_path)
 
 def run_job(job_id: str, path: str, file_hash: str) -> None:
     # Run in the background after/ upload has replied
