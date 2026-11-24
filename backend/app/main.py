@@ -1,13 +1,21 @@
+import logging
 from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 
-from .transcription import router as transcription_router
+# One logger for the whole backend. Warnings and errors show up in the uvicorn / rq worker terminal.
+logger = logging.getLogger("notewave")
 
+# basic-pitch is optional: without it, the API still starts but /api/transcribe is off
+try:
+    from .transcription import router as transcription_router
+except ImportError as e:
+    logger.warning("Transcription disabled (%s). Install basic-pitch to enable /api/transcribe.", e)
+    transcription_router = None
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
 from fastapi.middleware.cors import CORSMiddleware
 import os
-import shutil
 import tempfile
 import time
 import uuid # Make unique id
@@ -25,15 +33,27 @@ if transcription_router is not None:
 
 ALLOWED_CONTENT_TYPES = {"audio/mpeg", "audio/mp3"}
 MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
+CHUNK_SIZE = 1024 * 1024 # Read uploads 1 MB at a time
 CACHE_TTL_SECONDS = 86400
 JOB_TTL_SECONDS = 3600
-redis_client = redis.Redis(host = "localhost", port=6379, decode_responses=True)
-queue_redis = redis.Redis(host="localhost", port=6379) # creates the connection to Redis
+# Where Redis lives. Set REDIS_URL to point somewhere else (see backend/.env.example); defaults to local Redis.
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+queue_redis = redis.Redis.from_url(REDIS_URL) # creates the connection to Redis
 job_queue = Queue(connection=queue_redis) # creates a queue and tells it which connection talk through
+
+# Which websites may call this API from a browser. Set ALLOWED_ORIGINS to a comma-separated list
+# (see backend/.env.example), e.g. the deployed frontend URL. Defaults to the local dev servers.
+DEFAULT_ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:8000"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS).split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:8000"], #change to real website later
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -43,6 +63,27 @@ def has_mp3_signature(header: bytes) -> bool:
     if header.startswith(b"ID3"):
         return True
     return len(header) >= 2 and header[0] == 0xFF and header[1] >= 0xE0
+
+def save_upload_to_temp(upload: UploadFile) -> tuple[str, str]:
+    # Copy the upload into a temp file 1 MB at a time, hashing each chunk as we go.
+    # Returns (temp file path, sha256 hash). Stops with 413 as soon as the file passes MAX_FILE_SIZE,
+    # so a huge upload is never fully read into memory (file.size can be None, so Check 3 can miss it).
+    hasher = hashlib.sha256()
+    total = 0
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+    try:
+        while chunk := upload.file.read(CHUNK_SIZE):
+            total += len(chunk)
+            if total > MAX_FILE_SIZE:
+                raise HTTPException(status_code=413, detail=f"File is too large (max {MAX_FILE_SIZE // (1024 * 1024)} MB)")
+            hasher.update(chunk)
+            tmp.write(chunk)
+        tmp.close()
+    except BaseException:
+        tmp.close()
+        os.remove(tmp.name) # Don't leave a half-written temp file behind
+        raise
+    return tmp.name, hasher.hexdigest()
 
 def save_job(job_id: str, job: dict) -> None:
    redis_client.set(f"job:{job_id}", json.dumps(job), ex = JOB_TTL_SECONDS)
@@ -80,6 +121,8 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
         save_job(job_id, {"status": "done", "notes": notes, "audio": audio})
         save_cached_result(file_hash, {"notes": notes, "audio": audio})
     except Exception:
+        # Log the full error and traceback so a "failed" job can actually be debugged
+        logger.exception("Job %s failed while analyzing %s", job_id, path)
         save_job(job_id, {"status": "failed", "notes": None, "audio": None})
     finally:
         os.remove(path) # Always delete the temp file, even if detection failed
@@ -87,6 +130,15 @@ def run_job(job_id: str, path: str, file_hash: str) -> None:
 
 @app.get("/")
 def health_check():
+    # Uploads and jobs need Redis, so "healthy" means Redis answers too
+    try:
+        redis_client.ping()
+    except redis.RedisError:
+        logger.warning("Health check: Redis is unreachable at %s", REDIS_URL)
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": "Redis is unreachable"},
+        )
     return {"status": "ok", "message": "NoteWave backend is running"}
 
 @app.post("/upload")
@@ -108,32 +160,37 @@ def upload_audio(file: UploadFile):
     if not has_mp3_signature(header):
         raise HTTPException(status_code=400, detail="Invalid MP3 file signature")
 
-    # Hash the upload, then save it to a temp file that run_job deletes
+    # Save the upload to a temp file (run_job deletes it later) and hash it in the same pass
     file.file.seek(0) #Go back to the start, since Check 4 already read the first 3 bytes
-    file_hash = hashlib.sha256(file.file.read()).hexdigest()
+    path, file_hash = save_upload_to_temp(file)
     job_id = str(uuid.uuid4())
 
-    cached = load_cached_result(file_hash)
-    if cached is not None:
-        save_job(job_id,{"status": "done", "notes": cached["notes"], "audio": cached["audio"]})
-        return {
-            "message": "Already analyzed, returning cache result",
-            "filename": file.filename,
-            "job_id": job_id,
-            "status": "done",
-            "file_hash": file_hash,
-            "notes": cached["notes"],
-            "audio": cached["audio"],
-        }
-    file.file.seek(0)
+    # From here on, Redis can fail. If it does, delete the temp file (otherwise nothing ever would)
+    # and tell the client to retry with a 503 instead of crashing with a 500.
+    try:
+        cached = load_cached_result(file_hash)
+        if cached is not None:
+            os.remove(path) # Already analyzed, so the temp file isn't needed
+            save_job(job_id,{"status": "done", "notes": cached["notes"], "audio": cached["audio"]})
+            return {
+                "message": "Already analyzed, returning cache result",
+                "filename": file.filename,
+                "job_id": job_id,
+                "status": "done",
+                "file_hash": file_hash,
+                "notes": cached["notes"],
+                "audio": cached["audio"],
+            }
 
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete = False) as tmp:
-        shutil.copyfileobj(file.file, tmp) # Copy the upload into the temp file
-        path = tmp.name # Remember where the file is for run_job
+        # Create a job and run the slow analysis in the background
+        save_job(job_id, {"status": "processing", "notes": None, "audio": None})
+        job_queue.enqueue(run_job, job_id, path, file_hash)
+    except Exception:
+        if os.path.exists(path):
+            os.remove(path)
+        logger.exception("Could not queue job %s", job_id)
+        raise HTTPException(status_code=503, detail="Job queue is unavailable, try again later")
 
-    # Create a job and run the slow analysis in the background
-    save_job(job_id, {"status": "processing", "notes": None, "audio": None})
-    job_queue.enqueue(run_job, job_id, path, file_hash)
     return {
         "message": "Upload accepted, processing started",
         "filename": file.filename,

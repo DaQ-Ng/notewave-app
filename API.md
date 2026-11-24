@@ -10,18 +10,26 @@ Interactive docs: `http://localhost:8000/docs`
 3. Otherwise, poll `GET /jobs/{job_id}` every 1–2 seconds until `status` is `done` or `failed`.
 
 Requires Redis and a worker running: see "Running the backend" below.
-CORS allows `http://localhost:5173` (the Vite dev server) and `http://localhost:3000`.
+CORS allows `http://localhost:5173` (the Vite dev server) and `http://localhost:3000` by default.
+To allow other sites (for example the deployed frontend), set `ALLOWED_ORIGINS` to a comma-separated
+list (see `backend/.env.example`).
 
 ---
 
 ## GET /
 
-Health check.
+Health check. Also checks that Redis is reachable, since uploads and jobs need it.
 
 **Response 200**
 
 ```json
 { "status": "ok", "message": "NoteWave backend is running" }
+```
+
+**Response 503: Redis is down**
+
+```json
+{ "status": "error", "message": "Redis is unreachable" }
 ```
 
 ---
@@ -75,6 +83,7 @@ Upload an MP3 for analysis.
 | 400  | `Invalid content type: ...`     | not `audio/mpeg` or `audio/mp3` |
 | 400  | `Invalid MP3 file signature`    | file isn't really an MP3        |
 | 413  | `File is too large (max 25 MB)` | file over 25 MB                 |
+| 503  | `Job queue is unavailable, try again later` | Redis is down; nothing was saved, safe to retry |
 
 ---
 
@@ -155,3 +164,7 @@ From `backend/` with the venv active:
 1. `sudo service redis-server start`
 2. `uvicorn app.main:app --reload`
 3. `rq worker` (in a second terminal)
+
+Redis defaults to `redis://localhost:6379/0`. To use a different Redis, set `REDIS_URL`
+(see `backend/.env.example`) in both terminals, and start the worker with
+`rq worker --url "$REDIS_URL"` so it reads from the same queue.
