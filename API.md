@@ -1,4 +1,4 @@
-c# NoteWave API
+# NoteWave API
 
 Base URL (local): `http://localhost:8000`
 Interactive docs: `http://localhost:8000/docs`

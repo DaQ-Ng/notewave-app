@@ -1,108 +1,169 @@
-# {{PROJECT_NAME}} — Development README
+# NoteWave
 
-Working draft for maintainers & contributors while the project is under active development. Coordinate in ACM Discord(project channel or #projects).
+Upload a recording and see the notes in it. NoteWave turns an MP3 into a list of detected notes
+(pitch, start, end) and shows them on an interactive waveform and piano roll that follow playback.
 
-Directors / Contacts: Prajit and Bryan — DM on Discord
+Built as a team project for ACM at UTA. This fork is maintained by
+[Dat Nguyen (@DaQ-Ng)](https://github.com/DaQ-Ng), who built the backend.
 
----
+## How it works
 
-## Status & Links
-- Phase: In Development
-- Project board: {{PROJECT_BOARD_URL}}
-- Communication: Discord #{{project-channel}}
-- Open issues: use repo Issues; prefer labels `good first issue` and `help wanted` thoughtfully
+```
+Browser ──POST /upload──▶ FastAPI ──enqueue──▶ Redis queue ──▶ RQ worker ──▶ basic-pitch
+   │                         │                                     │
+   │                         └── cache hit? return notes now       └── save result + cache by file hash
+   └──GET /jobs/{id} (poll every 1 s)◀──────────── job status in Redis ◀─┘
+```
 
----
+1. **Upload.** `POST /upload` checks the file (`.mp3` name, content type, MP3 signature, 25 MB limit),
+   streams it to disk in 1 MB chunks, and hashes it with SHA-256 on the way.
+2. **Cache.** If that hash was analyzed before, the notes come back in the same response.
+3. **Background job.** Otherwise the API replies right away with a `job_id` and queues the analysis.
+   An RQ worker runs [basic-pitch](https://github.com/spotify/basic-pitch) on the file, filters
+   overtones, stores the result in Redis, and caches it for 24 hours.
+4. **Polling.** The frontend polls `GET /jobs/{job_id}` until the status is `done` or `failed`.
 
-## Getting Started
+The slow part (note detection) never blocks a web request, so long songs don't time out, and
+uploading the same song twice is instant.
 
-### Prerequisites
-- Git
-- One of: Node 20+ or Python 3.11+ or Go 1.22+ or Rust (stable)
-- Optional: Docker Desktop
+## Tech stack
 
-### Environment
-- Copy the sample env to your local file: `cp .env.example .env`
-- Keep secrets out of git. If you add a new variable, document it in `.env.example`.
+| Part | Tools |
+|---|---|
+| Frontend | React 19, Vite |
+| API | FastAPI, Uvicorn |
+| Jobs and cache | Redis, RQ |
+| Note detection | basic-pitch, pretty_midi, librosa |
+| Tests | pytest, fakeredis |
 
-### Bootstrap
-- Clone: `git clone https://github.com/{{GITHUB_OWNER}}/{{REPO}}.git` then `cd {{REPO}}`
-- Node: if `package.json` exists → `npm ci` (fallback `npm install`)
-- Python: if `requirements.txt` exists → create venv `python -m venv .venv`, activate, then `pip install -r requirements.txt`
-- Go: if `go.mod` exists → `go mod download`
-- Rust: if `Cargo.toml` exists → `cargo fetch`
+## Running it locally
 
-### Run
-- Node: `npm run dev` (dev server) or `npm start` (if app defines it)
-- Python (FastAPI example): `uvicorn app:app --reload`
-- Go: `go run ./...`
-- Rust: `cargo run`
+You need four things running: **Redis**, the **API**, the **worker**, and the **frontend**.
+Linux, macOS, or WSL on Windows; Python 3.10–3.12; Node 20+.
 
----
+### 1. Redis
 
-## Repo Conventions
+With Docker:
 
-### Commits & Branches
-- Use Conventional Commits. Examples:
-  - `feat(ui): add dark mode toggle`
-  - `fix(api): handle null user_id on login`
-  - `docs(readme): clarify quickstart`
-  - `chore(deps): bump eslint to v9`
-- Branch names: `feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `docs/<slug>`
+```bash
+docker run -d --name notewave-redis -p 6379:6379 redis:7-alpine
+```
 
-### Pull Requests
-- We use the **Forking Workflow**. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for detailed instructions on how to submit code.
-- Prefer small, focused PRs; link issues using `Fixes #123`.
-- Use the PR template: include testing steps and screenshots.
-- Request reviews from maintainers or CODEOWNERS.
+Or on Ubuntu/WSL: `sudo apt install redis-server && sudo service redis-server start`
 
-### Testing, Linting, Formatting
-- Aim for at least a smoke test; run local checks before pushing.
-- Node: `npm test` (or none if not configured), `npm run lint` (if present), `npm run format` (if present).
-- Python: `pytest` (or note “No tests”), `ruff check .` (if using), `ruff format .`.
-- Go: `go test ./...`.
-- Rust: `cargo test`.
+### 2. Backend setup (once)
 
-### Secrets & Configuration
-- Never commit `.env` or credentials
-- Use `.env` locally; keep `.env.example` updated so others know what is required
-- For deployments, store secrets in platform settings (not in code)
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install fastapi "uvicorn[standard]" python-multipart pretty_midi redis librosa rq
+```
 
----
+Then install basic-pitch. On **Python 3.10 or 3.11**:
 
-## Project Structure (suggested)
-- `src/` — application code
-- `tests/` — unit/integration tests
-- `docs/` — screenshots, diagrams, decisions (ADRs)
-- `API.md` — List of every endpoint and its function. (Required if project has a backend)
-- `.github/` — PR/Issue templates, CODEOWNERS (optional)
-- `.env.example` — sample env vars (copy to `.env` locally)
-- `README.dev.md` — this file (dev-only)
+```bash
+pip install basic-pitch
+```
 
----
+On **Python 3.12**, basic-pitch's TensorFlow pin has no wheels, so use its ONNX backend instead:
 
-## Decision Log (keep brief)
-Create `docs/DECISIONS.md` and record major choices with date and rationale. Example entries:
-- 2025-09-14: Choose Postgres over Mongo (SQL familiarity, joins, migrations)
-- 2025-09-14: Host on Render for MVP (simple, acceptable free tier)
+```bash
+pip install basic-pitch==0.4.0 --no-deps
+pip install "mir-eval>=0.6" "resampy<0.4.3,>=0.2.2" onnxruntime "setuptools<81"
+```
 
----
+### 3. API (terminal 1)
 
-## Release Prep Checklist (before first public release)
-- Finalize end-user README (rename/replace root README; include screenshot/GIF)
-- Choose and add a LICENSE file appropriate for the project
-- Ensure `.env.example` documents all required variables
-- Confirm basic tests pass; document manual smoke test steps
-- Tag `v0.1.0` with concise release notes
+```bash
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload
+```
 
----
+Runs on `http://localhost:8000`. Interactive docs are at `http://localhost:8000/docs`.
 
-## Community & Security
-- Please read our [Code of Conduct](CODE_OF_CONDUCT.md).
-- Privately contact Prajit or Bryan (ACM Discord DM) with security vulnerabilities. Do not open public issues for them!
+### 4. Worker (terminal 2)
 
----
+```bash
+cd backend && source .venv/bin/activate
+rq worker --url redis://localhost:6379/0
+```
 
-## Maintainers & Support
-- Maintainers: {{PRIMARY_OWNER}} ([@{{GITHUB_HANDLE}}](https://github.com/{{GITHUB_HANDLE}})), {{CO_MAINTAINER}}
-- Directors / Contacts: Prajit and Bryan — DM on Discord
+The first job takes a few extra seconds while the model loads.
+
+### 5. Frontend (terminal 3)
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173` and upload an MP3.
+
+### Configuration
+
+Both settings are optional; see [`backend/.env.example`](backend/.env.example).
+
+| Variable | Default | Used for |
+|---|---|---|
+| `REDIS_URL` | `redis://localhost:6379/0` | Job store, cache, and queue (set it for the API **and** the worker) |
+| `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:3000,...` | Sites allowed to call the API (CORS) |
+
+## Tests
+
+```bash
+cd backend && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+```
+
+The tests use an in-memory Redis (fakeredis) and don't need basic-pitch or a running worker.
+
+## Docker (API only)
+
+```bash
+cd backend
+docker build -t notewave-api .
+docker run --rm -p 7860:7860 -e REDIS_URL=redis://host.docker.internal:6379/0 notewave-api
+```
+
+The image runs the API. Run the worker separately against the same `REDIS_URL`.
+
+## API
+
+| Method | Path | What it does |
+|---|---|---|
+| `GET` | `/` | Health check (also checks Redis) |
+| `POST` | `/upload` | Upload an MP3; returns a `job_id`, or the notes if cached |
+| `GET` | `/jobs/{job_id}` | Job status: `processing`, `done` (with notes), or `failed` |
+| `POST` | `/api/transcribe` | Analyze a file in one request (no queue or cache) |
+
+Full request and response details are in [API.md](API.md).
+
+## Project structure
+
+```
+backend/
+  app/main.py            API: upload, jobs, cache, health check, background job
+  app/transcription.py   Note detection (basic-pitch) and /api/transcribe
+  app/audio_processing.py  Audio duration and sample rate
+  tests/                 pytest suite
+  Dockerfile
+frontend/
+  src/App.jsx            Upload, polling, and page layout
+  src/components/        Waveform and piano roll
+```
+
+## Credits
+
+Team project by ACM at UTA members. The original repository is
+[acmuta/notewave](https://github.com/acmuta/notewave).
+
+- **Dat Nguyen**: backend (FastAPI app, upload validation, Redis job queue and cache, RQ worker,
+  tests, Docker, API docs) and wiring the frontend to the async pipeline in this fork
+- **Rishav**: frontend design (waveform, piano roll, layout)
+- **Sudin**: note detection with basic-pitch
+- **kreyescse**: initial frontend and frontend-to-backend connection
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
