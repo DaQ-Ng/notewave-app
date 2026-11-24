@@ -4,7 +4,9 @@ import PianoRoll from "./components/pianoroll";
 import Waveform from "./components/waveform";
 import "./App.css";
 
-const API_URL = "http://127.0.0.1:8000";
+// Where the backend lives. Set VITE_API_URL when building for production (e.g. on Vercel);
+// local development falls back to the API on port 8000.
+const API_URL = (import.meta.env.VITE_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const POLL_INTERVAL_MS = 1000;
 
 // Wait `ms` milliseconds, but stop early (with an AbortError) if the upload is cancelled
@@ -133,7 +135,7 @@ function App() {
 
       setError(
         err instanceof TypeError
-          ? "Cannot reach FastAPI on port 8000. Check your backend terminal."
+          ? "Cannot reach the NoteWave server. If it was asleep, it may take a minute to wake up. Try again shortly."
           : err.message || "Could not analyze this recording."
       );
     } finally {
