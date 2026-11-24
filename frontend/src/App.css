@@ -1,62 +1,1001 @@
-.app {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding-top: 3rem;
+
+.studio-app {
   min-height: 100vh;
+  background:
+    radial-gradient(
+      ellipse at 52% -180px,
+      rgba(93, 94, 198, 0.24),
+      transparent 55%
+    ),
+    #0b1020;
+  color: #f1f4ff;
+}
+
+/* Top navigation */
+
+.studio-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px clamp(16px, 4vw, 64px);
+  border-bottom: 1px solid #25314d;
+  background: rgba(14, 20, 37, 0.85);
+}
+
+.studio-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: -0.035em;
+}
+
+.studio-brand-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: linear-gradient(
+    135deg,
+    #8c7bff,
+    #4acde0
+  );
+  color: #12172d;
+  font-size: 1.5rem;
+}
+
+.studio-brand-accent {
+  color: #93a8ff;
+}
+
+.studio-topbar-tag,
+.studio-eyebrow {
+  color: #92a4c5;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+/* Main container */
+
+.studio-main {
+  width: min(1320px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 34px 0 64px;
+}
+
+/* Upload screen */
+
+.studio-welcome {
+  text-align: center;
+  padding-top: clamp(32px, 7vh, 80px);
+}
+
+.studio-welcome h1 {
+  margin: 16px auto 12px;
+  font-size: clamp(2.2rem, 5vw, 4.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+  max-width: 780px;
+}
+
+.studio-welcome > p {
+  color: #afbdd5;
+  max-width: 640px;
+  margin: 0 auto 36px;
+  line-height: 1.6;
+}
+
+.studio-dropzone {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 48px 24px;
+  border: 2px dashed #516186;
+  border-radius: 20px;
+  background: rgba(30, 41, 70, 0.55);
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 16px;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
 }
 
-.upload-row {
-  display: flex;
-  justify-content: center;
+.studio-dropzone.is-dragging {
+  border-color: #b2a6ff;
+  background: #26365a;
+}
+
+.studio-upload-icon {
+  font-size: 2rem;
+  color: #a99bff;
+}
+
+.studio-dropzone p {
+  margin: 0;
+  color: #aab7cf;
+  font-size: 0.9rem;
+}
+
+.studio-button {
+  display: inline-flex;
   align-items: center;
-  gap: 1rem;
-  margin: 2rem 0;
-}
-
-.upload-button {
-  border: 1px solid black;
-  padding: 0.5rem 1rem;
+  justify-content: center;
+  padding: 12px 20px;
+  border-radius: 11px;
+  background: linear-gradient(
+    120deg,
+    #796af0,
+    #5854c9
+  );
+  color: white;
+  font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
 }
 
-.note-display {
-  font-size: 6rem;
-  font-weight: bold;
-  margin: 2rem 0 1rem;
+.studio-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px #7165f04d;
 }
 
-.status {
-  min-height: 1.5rem;
+.studio-button-secondary {
+  background: #263352;
+  border: 1px solid #48597b;
 }
 
-.file-name {
-  border: 1px solid #999;
-  min-width: 250px;
-  padding: 0.5rem 1rem;
-  margin-bottom: 1.5rem;
-}
+/* Track header */
 
-.note-display {
-  font-size: 6rem;
-  font-weight: bold;
-  margin: 1.5rem 0 1rem;
-}
-
-.note-row {
+.studio-trackbar {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
 }
 
-.note-chip {
-  border: 1px solid #999;
-  padding: 0.25rem 0.75rem;
+.studio-track-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
 }
 
-.note-chip.active {
-  background: black;
+.studio-track-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  font-size: 1.8rem;
+  background: #29385e;
+  color: #ac9aff;
+}
+
+.studio-track-info .studio-eyebrow {
+  margin: 0 0 6px;
+}
+
+.studio-track-info h1 {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.7vw, 1.8rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.studio-error {
+  padding: 14px 18px;
+  border: 1px solid #874c64;
+  background: #3b2037;
+  color: #ffb9c6;
+  border-radius: 10px;
+}
+
+/* Dashboard layout */
+
+.studio-workspace-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.75fr)
+    minmax(285px, 0.8fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+
+.studio-panel {
+  border: 1px solid #344163;
+  border-radius: 18px;
+  background: #151e34;
+  padding: 22px;
+  min-width: 0;
+}
+
+.studio-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.studio-panel-heading h2 {
+  margin: 5px 0 0;
+  font-size: 1.15rem;
+  color: #f1f5ff;
+}
+
+.studio-time {
+  color: #b7a9ff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+/* Audio player and waveform */
+
+.studio-player-panel audio {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.studio-player-panel .waveform-card {
+  width: 100%;
+  margin: 12px 0 0;
+  padding: 12px;
+  border-color: #283752;
+  background: #10182b;
+}
+
+.studio-player-panel .waveform-header {
+  margin-bottom: 10px;
+}
+
+.studio-player-panel .waveform-header h2 {
+  font-size: 0.93rem;
+}
+
+.studio-player-panel .waveform-visual {
+  height: 116px;
+}
+
+.studio-player-panel .waveform-hint {
+  font-size: 0.75rem;
+  margin-top: 8px;
+}
+
+/* Live note panel */
+
+.studio-insights-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.studio-indicator {
+  padding: 6px 10px;
+  border: 1px solid #3d6a63;
+  border-radius: 99px;
+  color: #8ce2ce;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.studio-indicator.is-loading {
+  color: #f5c98d;
+  border-color: #7b6749;
+}
+
+.studio-active-notes {
+  display: flex;
+  align-items: center;
+  min-height: 100px;
+  margin-top: 8px;
+  color: #b6a6ff;
+  font-size: clamp(1.8rem, 3vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+}
+
+.studio-helper {
+  color: #a4b4ce;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+.studio-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: auto;
+}
+
+.studio-stat-grid > div {
+  background: #1e2b45;
+  border-radius: 10px;
+  padding: 12px 8px;
+  min-width: 0;
+}
+
+.studio-stat-grid span {
+  display: block;
+  color: #aab9d1;
+  font-size: 0.7rem;
+}
+
+.studio-stat-grid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Piano roll and loading */
+
+.studio-app .piano-roll {
+  width: 100%;
+  margin: 0 0 18px;
+}
+
+.studio-analysis-loading {
+  margin-bottom: 18px;
+}
+
+.studio-analysis-loading p {
+  margin-bottom: 0;
+  color: #a9b9d4;
+}
+
+.studio-loader {
+  width: 100%;
+  height: 145px;
+  border-radius: 12px;
+  border: 1px solid #2b3b59;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 32px,
+      #26344e 33px 34px
+    ),
+    #10182b;
+  position: relative;
+  overflow: hidden;
+}
+
+.studio-loader::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #a99bff35,
+    transparent
+  );
+  animation: studio-shimmer 1.6s linear infinite;
+}
+
+@keyframes studio-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.studio-empty-result {
+  color: #b7c4dd;
+  margin-bottom: 18px;
+}
+
+/* Collapsible note table */
+
+.studio-note-details {
+  border: 1px solid #344163;
+  border-radius: 14px;
+  background: #151e34;
+  overflow: hidden;
+}
+
+.studio-note-details summary {
+  cursor: pointer;
+  padding: 17px 21px;
+  font-weight: 650;
+}
+
+.studio-note-details summary:hover {
+  background: #1f2a44;
+}
+
+.studio-table-scroll {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.studio-note-details table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.studio-note-details th,
+.studio-note-details td {
+  padding: 10px 21px;
+  border-bottom: 1px solid #2a3652;
+}
+
+.studio-note-details th {
+  color: #aebbe1;
+  background: #1d2842;
+  position: sticky;
+  top: 0;
+}
+
+.studio-note-details tr.is-active {
+  background: #2c3362;
+}
+
+.studio-footer {
+  text-align: center;
+  padding: 24px;
+  border-top: 1px solid #27324c;
+  color: #8090ac;
+  font-size: 0.8rem;
+}
+
+/* Responsive dashboard */
+
+@media (max-width: 980px) {
+  .studio-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .studio-main {
+    width: calc(100% - 24px);
+    padding-top: 22px;
+  }
+
+  .studio-topbar {
+    padding: 16px 12px;
+  }
+
+  .studio-topbar-tag {
+    display: none;
+  }
+
+  .studio-trackbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .studio-panel {
+    padding: 14px;
+  }
+
+  .studio-panel-heading {
+    align-items: flex-start;
+  }
+
+  .studio-note-details th,
+  .studio-note-details td {
+    padding: 10px;
+  }
+
+  .studio-dropzone {
+    padding: 34px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-loader::after {
+    animation: none;
+  }
+}
+/* Light background + dark blue panels theme */
+
+.studio-app {
+  min-height: 100vh;
+  background: #f6f8fc;
+  color: #162033;
+}
+
+.studio-topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #d9e1ee;
+}
+
+.studio-brand,
+.studio-track-info h1,
+.studio-panel-heading h2,
+.studio-note-details summary {
+  color: #162033;
+}
+
+.studio-topbar-tag,
+.studio-eyebrow,
+.studio-helper,
+.studio-footer,
+.studio-note-details th,
+.studio-note-details td,
+.studio-time {
+  color: #5d6b85;
+}
+
+.studio-main {
+  padding-top: 34px;
+}
+
+.studio-panel,
+.studio-app .piano-roll,
+.studio-note-details,
+.studio-analysis-loading,
+.studio-empty-result {
+  background: #16233f;
+  color: #f2f6ff;
+  border-color: #2d4168;
+}
+
+.studio-panel-heading h2,
+.studio-active-notes,
+.studio-note-details summary,
+.studio-note-details th,
+.studio-note-details td,
+.studio-empty-result {
+  color: #f2f6ff;
+}
+
+.studio-trackbar {
+  background: transparent;
+}
+
+.studio-track-icon,
+.studio-stat-grid > div {
+  background: #223254;
+  color: #d8e4ff;
+}
+
+.studio-player-panel .waveform-card {
+  background: #101a30;
+  border-color: #2d4168;
+}
+
+.studio-player-panel .waveform-visual {
+  background: #0c1528;
+}
+
+.studio-app .piano-roll-axis,
+.studio-app .piano-roll-labels {
+  background: #223254;
+}
+
+.studio-app .piano-roll-lanes {
+  background: #0f1830;
+}
+
+.studio-app .piano-roll-lane.piano-roll-c {
+  background: #182544;
+}
+
+.studio-app .piano-roll-key.piano-roll-c {
+  background: #2a3b62;
+}
+
+.studio-note-details th {
+  background: #223254;
+}
+
+.studio-note-details tr.is-active {
+  background: #2c3f68;
+}
+
+.studio-footer {
+  border-top: 1px solid #d9e1ee;
+  color: #6a7890;
+  background: #ffffff;
+}
+
+.studio-error {
+  background: #fff1f3;
+  border-color: #f0b8c0;
+  color: #a33c4f;
+}
+
+.studio-button-secondary {
+  background: #223254;
+  border-color: #31476f;
   color: white;
 }
+
+/* ==========================================
+   NOTEWAVE — WHITE + NAVY PROFESSIONAL THEME
+   ========================================== */
+
+:root {
+  --page-bg: #f7f9fc;
+  --surface-white: #ffffff;
+  --navy: #172742;
+  --navy-deep: #101d34;
+  --navy-light: #243957;
+  --navy-border: #30486c;
+  --text-dark: #14213b;
+  --text-light: #f2f6ff;
+  --text-muted: #aabbd6;
+  --accent: #a995f5;
+}
+
+/* Main background */
+
+.studio-app {
+  background: var(--page-bg);
+  color: var(--text-dark);
+  min-height: 100vh;
+}
+
+/* Navigation */
+
+.studio-topbar {
+  background: #ffffff;
+  border-bottom: 1px solid #e3e9f2;
+  box-shadow: 0 1px 4px rgba(25, 40, 70, 0.03);
+}
+
+.studio-brand {
+  color: #15243e;
+}
+
+.studio-brand-accent {
+  color: #7963dc;
+}
+
+.studio-brand-icon {
+  background: linear-gradient(
+    135deg,
+    #8674e8,
+    #7cc6e8
+  );
+}
+
+.studio-topbar-tag {
+  color: #546987;
+}
+
+/* Main container */
+
+.studio-main {
+  padding-top: 36px;
+}
+
+/* Track information */
+
+.studio-track-info h1 {
+  color: #14213b;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.studio-trackbar .studio-eyebrow {
+  color: #627590;
+}
+
+.studio-track-icon {
+  background: #253d69;
+  color: #d3c6ff;
+  border-radius: 14px;
+}
+
+/* Buttons */
+
+.studio-button {
+  background: #263e67;
+  color: white;
+  border: 1px solid #314b77;
+  border-radius: 10px;
+  box-shadow: none;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.studio-button:hover {
+  background: #344f80;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 12px rgba(20, 35, 65, 0.14);
+}
+
+.studio-button-secondary {
+  background: #263e67;
+  color: #ffffff;
+}
+
+/* Main dashboard cards */
+
+.studio-panel,
+.studio-app .piano-roll,
+.studio-note-details {
+  background: var(--navy);
+  color: var(--text-light);
+  border: 1px solid var(--navy-border);
+  border-radius: 16px;
+  box-shadow: 0 5px 16px rgba(25, 40, 75, 0.07);
+}
+
+/* Panel titles and labels */
+
+.studio-panel-heading h2,
+.studio-app .piano-roll-heading h2 {
+  color: #f2f6ff;
+  font-weight: 700;
+}
+
+.studio-panel .studio-eyebrow {
+  color: #a9bbd9;
+}
+
+.studio-time,
+.studio-app .piano-roll-heading > span {
+  color: #c5b6ff;
+}
+
+.studio-app .piano-roll-heading p {
+  color: #b2c2de;
+}
+
+/* Audio player */
+
+.studio-player-panel audio {
+  width: 100%;
+  border-radius: 12px;
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+/* Waveform */
+
+.studio-player-panel .waveform-card {
+  background: #11203a;
+  border: 1px solid #31496e;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.studio-player-panel .waveform-header h2 {
+  color: #f1f5ff;
+}
+
+.studio-player-panel .waveform-header span {
+  color: #c6b9ff;
+}
+
+.studio-player-panel .waveform-visual {
+  background: #0c1930;
+  border-radius: 10px;
+}
+
+.studio-player-panel .waveform-hint {
+  color: #a9bad5;
+}
+
+/* Live analysis */
+
+.studio-active-notes {
+  color: #b9a9ff;
+  font-weight: 800;
+}
+
+.studio-helper {
+  color: #b1c0db;
+}
+
+.studio-stat-grid > div {
+  background: #283d60;
+  border: 1px solid #30496e;
+  border-radius: 11px;
+}
+
+.studio-stat-grid span {
+  color: #c1cce1;
+}
+
+.studio-stat-grid strong {
+  color: white;
+  font-weight: 750;
+}
+
+/* Status indicators */
+
+.studio-indicator {
+  background: rgba(36, 119, 91, 0.12);
+  border-color: #4d987f;
+  color: #98e4c9;
+}
+
+.studio-indicator.is-loading {
+  background: rgba(191, 141, 59, 0.10);
+  border-color: #92743f;
+  color: #f4cf8e;
+}
+
+/* Piano roll background */
+
+.studio-app .piano-roll-scroll {
+  background: #101b31;
+  border: 1px solid #334b70;
+  border-radius: 10px;
+}
+
+.studio-app .piano-roll-labels {
+  background: #263b60;
+}
+
+.studio-app .piano-roll-axis {
+  background: #2b4063;
+}
+
+.studio-app .piano-roll-lanes {
+  background: #101b32;
+}
+
+.studio-app .piano-roll-lane {
+  border-color: #2c3b59;
+}
+
+.studio-app .piano-roll-lane.piano-roll-c {
+  background: #203253;
+}
+
+.studio-app .piano-roll-key {
+  color: #d5e0fa;
+  border-color: #344d72;
+}
+
+.studio-app .piano-roll-key.piano-roll-c {
+  background: #344b72;
+  color: #ffffff;
+}
+
+/* Purple detected notes */
+
+.studio-app .piano-roll-note {
+  background: #8675e8;
+  border-color: #ac9dff;
+}
+
+.studio-app .piano-roll-note:hover {
+  background: #a99bff;
+}
+
+.studio-app .piano-roll-note.active {
+  background: #39b9d3;
+  border-color: #9df3ff;
+}
+
+/* Collapsible note details */
+
+.studio-note-details summary {
+  background: #172742;
+  color: #f2f6ff;
+}
+
+.studio-note-details summary:hover {
+  background: #263c60;
+}
+
+.studio-note-details th {
+  background: #263c60;
+  color: #d4dfff;
+}
+
+.studio-note-details td {
+  color: #e6edff;
+  border-color: #304769;
+}
+
+.studio-note-details tr.is-active {
+  background: #344778;
+}
+
+/* Upload homepage */
+
+.studio-welcome h1 {
+  color: #172742;
+  font-weight: 800;
+}
+
+.studio-welcome > .studio-eyebrow {
+  color: #7460cf;
+}
+
+.studio-welcome > p {
+  color: #5c6e89;
+}
+
+.studio-dropzone {
+  background: #ffffff;
+  border: 2px dashed #a9b7d0;
+  box-shadow: 0 6px 24px rgba(30, 50, 85, 0.05);
+}
+
+.studio-dropzone.is-dragging {
+  background: #eef0ff;
+  border-color: #8873ea;
+}
+
+.studio-dropzone p {
+  color: #62748e;
+}
+
+.studio-upload-icon {
+  color: #7963dc;
+}
+
+/* Analysis loading and empty states */
+
+.studio-loader {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 32px,
+      #263a56 33px 34px
+    ),
+    #101b32;
+}
+
+.studio-analysis-loading p,
+.studio-empty-result {
+  color: #c2cde1;
+}
+
+/* Footer */
+
+.studio-footer {
+  background: #ffffff;
+  border-top: 1px solid #e1e8f2;
+  color: #697b96;
+}
+
+/* Mobile responsiveness */
+
+@media (max-width: 980px) {
+  .studio-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .studio-main {
+    width: calc(100% - 24px);
+    padding-top: 20px;
+  }
+
+  .studio-panel {
+    padding: 16px;
+  }
+
+  .studio-active-notes {
+    font-size: 2rem;
+  }
+
+  .studio-trackbar {
+    gap: 16px;
+  }
+
+  .studio-app .piano-roll {
+    padding: 12px;
+  }
+}
+

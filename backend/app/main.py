@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, HTTPException
-<<<<<<< HEAD
+
 from .transcription import router as transcription_router
-=======
+
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)

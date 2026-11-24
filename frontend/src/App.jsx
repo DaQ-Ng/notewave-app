@@ -1,28 +1,41 @@
-import { useState, useRef, useEffect } from "react";
+
+import { useEffect, useRef, useState } from "react";
+import PianoRoll from "./components/pianoroll";
+import Waveform from "./components/Waveform";
 import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
+
+function formatTime(value) {
+  if (!Number.isFinite(value) || value < 0) return "0:00";
+
+  const seconds = Math.floor(value);
+
+  return `${Math.floor(seconds / 60)}:${String(
+    seconds % 60
+  ).padStart(2, "0")}`;
+}
 
 function App() {
   const [audioUrl, setAudioUrl] = useState(null);
   const [fileName, setFileName] = useState("");
   const [notes, setNotes] = useState([]);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [analyzed, setAnalyzed] = useState(false);
   const [error, setError] = useState("");
+  const [dragging, setDragging] = useState(false);
 
   const audioRef = useRef(null);
   const requestRef = useRef(null);
 
-  // Release the previous audio URL when another file is selected.
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
 
-  // Cancel an outstanding request when this component closes.
   useEffect(() => {
     return () => requestRef.current?.abort();
   }, []);
@@ -35,8 +48,8 @@ function App() {
       return;
     }
 
-    // Stop the previous request so its result cannot replace the new one.
     requestRef.current?.abort();
+
     const controller = new AbortController();
     requestRef.current = controller;
 
@@ -46,20 +59,23 @@ function App() {
     setFileName(file.name);
     setNotes([]);
     setCurrentTime(0);
-    setError("");
-    setAnalyzed(false);
+    setDuration(0);
     setLoading(true);
+    setAnalyzed(false);
+    setError("");
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      // Call the endpoint that uses the real Basic Pitch model.
-      const response = await fetch(`${API_URL}/api/transcribe`, {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
+      const response = await fetch(
+        `${API_URL}/api/transcribe`,
+        {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        }
+      );
 
       const data = await response.json();
 
@@ -72,22 +88,24 @@ function App() {
       }
 
       if (!Array.isArray(data.notes)) {
-        throw new Error("The backend returned an unexpected response.");
+        throw new Error(
+          "The backend returned an unexpected response."
+        );
       }
 
-      // Ignore results belonging to a previously selected file.
       if (controller.signal.aborted) return;
 
-      // Sort the detected notes by their starting time.
-      setNotes([...data.notes].sort((a, b) => a.start - b.start));
+      setNotes(
+        [...data.notes].sort((a, b) => a.start - b.start)
+      );
       setAnalyzed(true);
     } catch (err) {
       if (controller.signal.aborted) return;
 
       setError(
         err instanceof TypeError
-          ? "Cannot reach the backend. Check that it is running on port 8000."
-          : err.message || "Could not analyze this file."
+          ? "Cannot reach FastAPI on port 8000. Check your backend terminal."
+          : err.message || "Could not analyze this recording."
       );
     } finally {
       if (!controller.signal.aborted) {
@@ -98,126 +116,362 @@ function App() {
 
   function handleDrop(event) {
     event.preventDefault();
+    setDragging(false);
     loadFile(event.dataTransfer.files[0]);
   }
 
-  // Several notes can be active at once, such as guitar chord notes.
-  function isActive(note) {
-    return currentTime >= note.start && currentTime < note.end;
+  function seekAndPlay(seconds) {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.currentTime = Math.max(0, seconds);
+    setCurrentTime(audio.currentTime);
+
+    audio.play().catch((err) => {
+      console.error("Playback failed:", err);
+    });
   }
 
-  const activeNames = [
-    ...new Set(notes.filter(isActive).map((note) => note.note)),
+  const activeNotes = [
+    ...new Set(
+      notes
+        .filter(
+          (note) =>
+            currentTime >= note.start &&
+            currentTime < note.end
+        )
+        .map((note) => note.note)
+    ),
   ];
 
   return (
-    <div
-      className="app"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={handleDrop}
-    >
-      <h1>NoteWave</h1>
-
-      <div className="upload-row">
-        <label className="upload-button">
-          Upload a track
-          <input
-            type="file"
-            accept=".mp3,audio/mpeg"
-            onChange={(event) => {
-              loadFile(event.target.files[0]);
-
-              // Allow selecting the same file again to retry.
-              event.target.value = "";
-            }}
-            hidden
-          />
-        </label>
-        <span>or drag an MP3 file here</span>
-      </div>
-
-      <div className="file-name">
-        {fileName || "No track loaded"}
-      </div>
-
-      {loading && (
-        <p role="status">Analyzing audio… Please wait.</p>
-      )}
-
-      {error && <p role="alert">{error}</p>}
-
-      {analyzed && (
-        <p>
-          {notes.length > 0
-            ? `${notes.length} note events detected. Press play below.`
-            : "No notes were detected in this recording."}
-        </p>
-      )}
-
-      {/* Native controls provide play, pause, volume, and seeking. */}
-      {audioUrl && (
-        <audio
-          key={audioUrl}
-          ref={audioRef}
-          src={audioUrl}
-          controls
-          onTimeUpdate={(event) =>
-            setCurrentTime(event.currentTarget.currentTime)
-          }
-          onSeeked={(event) =>
-            setCurrentTime(event.currentTarget.currentTime)
-          }
-          onEnded={() => setCurrentTime(Infinity)}
-          onError={() => setError("The browser could not play this file.")}
-        />
-      )}
-
-      <div className="note-display">
-        {activeNames.length > 0 ? activeNames.join(" · ") : "—"}
-      </div>
-
-      <div className="note-row">
-        {notes.map((note, index) => (
+    <div className="studio-app">
+      {/* Navigation */}
+      <header className="studio-topbar">
+        <div className="studio-brand">
           <span
-            key={index}
-            className={
-              isActive(note) ? "note-chip active" : "note-chip"
-            }
-            title={`${note.start.toFixed(2)}s – ${note.end.toFixed(2)}s`}
+            className="studio-brand-icon"
+            aria-hidden="true"
           >
-            {note.note}
+            ◢
           </span>
-        ))}
-      </div>
 
-      {/* Show the actual timings returned by the backend. */}
-      {notes.length > 0 && (
-        <table style={{ margin: "20px auto", borderSpacing: "16px 8px" }}>
-          <thead>
-            <tr>
-              <th>Note</th>
-              <th>Start (s)</th>
-              <th>End (s)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {notes.map((note, index) => (
-              <tr
-                key={index}
-                style={{
-                  backgroundColor: isActive(note)
-                    ? "rgba(80, 180, 120, 0.25)"
-                    : "transparent",
-                }}
+          <span>
+            Note
+            <span className="studio-brand-accent">
+              Wave
+            </span>
+          </span>
+        </div>
+
+        <span className="studio-topbar-tag">
+          AUDIO ANALYSIS STUDIO
+        </span>
+      </header>
+
+      <main className="studio-main">
+        {/* Upload screen */}
+        {!audioUrl ? (
+          <section className="studio-welcome">
+            <span className="studio-eyebrow">
+              YOUR MUSIC, VISUALIZED
+            </span>
+
+            <h1>
+              Discover the notes behind the sound.
+            </h1>
+
+            <p>
+              Upload a recording to explore its waveform
+              and detected notes in an interactive piano
+              roll.
+            </p>
+
+            <div
+              className={`studio-dropzone${
+                dragging ? " is-dragging" : ""
+              }`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+            >
+              <span
+                className="studio-upload-icon"
+                aria-hidden="true"
               >
-                <td>{note.note}</td>
-                <td>{note.start.toFixed(2)}</td>
-                <td>{note.end.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                ♫
+              </span>
+
+              <label className="studio-button">
+                Upload an MP3
+
+                <input
+                  type="file"
+                  accept=".mp3,audio/mpeg"
+                  hidden
+                  onChange={(event) => {
+                    loadFile(event.target.files[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+
+              <p>
+                or drag and drop your audio here
+              </p>
+            </div>
+          </section>
+        ) : (
+          /* Compact track header */
+          <section className="studio-trackbar">
+            <div className="studio-track-info">
+              <span
+                className="studio-track-icon"
+                aria-hidden="true"
+              >
+                ♫
+              </span>
+
+              <div>
+                <p className="studio-eyebrow">
+                  CURRENT TRACK
+                </p>
+                <h1 title={fileName}>
+                  {fileName}
+                </h1>
+              </div>
+            </div>
+
+            <label className="studio-button studio-button-secondary">
+              Change track
+
+              <input
+                type="file"
+                accept=".mp3,audio/mpeg"
+                hidden
+                onChange={(event) => {
+                  loadFile(event.target.files[0]);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </section>
+        )}
+
+        {error && (
+          <p className="studio-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        {audioUrl && (
+          <>
+            {/* Audio workspace and live notes */}
+            <div className="studio-workspace-grid">
+              <section className="studio-panel studio-player-panel">
+                <div className="studio-panel-heading">
+                  <div>
+                    <span className="studio-eyebrow">
+                      PLAYBACK
+                    </span>
+                    <h2>Audio workspace</h2>
+                  </div>
+
+                  <span className="studio-time">
+                    {formatTime(currentTime)} /{" "}
+                    {formatTime(duration)}
+                  </span>
+                </div>
+
+                <audio
+                  key={audioUrl}
+                  ref={audioRef}
+                  src={audioUrl}
+                  controls
+                  onLoadedMetadata={(event) =>
+                    setDuration(
+                      event.currentTarget.duration
+                    )
+                  }
+                  onTimeUpdate={(event) =>
+                    setCurrentTime(
+                      event.currentTarget.currentTime
+                    )
+                  }
+                  onSeeked={(event) =>
+                    setCurrentTime(
+                      event.currentTarget.currentTime
+                    )
+                  }
+                  onEnded={(event) =>
+                    setCurrentTime(
+                      event.currentTarget.duration
+                    )
+                  }
+                  onError={() =>
+                    setError(
+                      "The browser could not play this file."
+                    )
+                  }
+                />
+
+                <Waveform
+                  audioUrl={audioUrl}
+                  currentTime={currentTime}
+                  duration={duration}
+                  onSeek={seekAndPlay}
+                />
+              </section>
+
+              {/* Active-note side panel */}
+              <aside className="studio-panel studio-insights-panel">
+                <div className="studio-panel-heading">
+                  <div>
+                    <span className="studio-eyebrow">
+                      LIVE ANALYSIS
+                    </span>
+                    <h2>Active notes</h2>
+                  </div>
+
+                  <span
+                    className={`studio-indicator${
+                      loading ? " is-loading" : ""
+                    }`}
+                  >
+                    {loading
+                      ? "Processing"
+                      : analyzed
+                      ? "Ready"
+                      : error
+                      ? "Error"
+                      : "Waiting"}
+                  </span>
+                </div>
+
+                <div className="studio-active-notes">
+                  {activeNotes.length
+                    ? activeNotes.join(" · ")
+                    : "—"}
+                </div>
+
+                <p className="studio-helper">
+                  {loading
+                    ? "Basic Pitch is analyzing your recording. You can play the audio now."
+                    : analyzed
+                    ? "These pitches update as the track plays."
+                    : "Note detection is not available yet."}
+                </p>
+
+                <div className="studio-stat-grid">
+                  <div>
+                    <span>Note events</span>
+                    <strong>{notes.length}</strong>
+                  </div>
+
+                  <div>
+                    <span>Active now</span>
+                    <strong>{activeNotes.length}</strong>
+                  </div>
+
+                  <div>
+                    <span>Duration</span>
+                    <strong>
+                      {formatTime(duration)}
+                    </strong>
+                  </div>
+                </div>
+              </aside>
+            </div>
+
+            {/* Piano roll */}
+            {loading ? (
+              <section
+                className="studio-panel studio-analysis-loading"
+                role="status"
+              >
+                <div className="studio-panel-heading">
+                  <div>
+                    <span className="studio-eyebrow">
+                      NOTE VISUALIZATION
+                    </span>
+                    <h2>Piano roll</h2>
+                  </div>
+
+                  <span className="studio-indicator is-loading">
+                    Analyzing
+                  </span>
+                </div>
+
+                <div className="studio-loader" />
+                <p>
+                  Detecting pitches and timestamps…
+                </p>
+              </section>
+            ) : notes.length > 0 ? (
+              <PianoRoll
+                notes={notes}
+                currentTime={currentTime}
+                duration={duration}
+                onSeek={seekAndPlay}
+              />
+            ) : analyzed ? (
+              <section className="studio-panel studio-empty-result">
+                No note events were detected in this recording.
+              </section>
+            ) : null}
+
+            {/* Collapsible note details */}
+            {notes.length > 0 && (
+              <details className="studio-note-details">
+                <summary>
+                  View all {notes.length} note events
+                </summary>
+
+                <div className="studio-table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Note</th>
+                        <th>Start (s)</th>
+                        <th>End (s)</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {notes.map((note, index) => (
+                        <tr
+                          key={`${note.pitch}-${note.start}-${index}`}
+                          className={
+                            currentTime >= note.start &&
+                            currentTime < note.end
+                              ? "is-active"
+                              : ""
+                          }
+                        >
+                          <td>{note.note}</td>
+                          <td>
+                            {note.start.toFixed(2)}
+                          </td>
+                          <td>
+                            {note.end.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+          </>
+        )}
+      </main>
+
+      <footer className="studio-footer">
+        NoteWave · Audio-to-note visualization
+      </footer>
     </div>
   );
 }

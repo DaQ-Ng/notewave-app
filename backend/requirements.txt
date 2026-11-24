@@ -1,11 +1,11 @@
 fastapi
 uvicorn[standard]
 python-multipart
-<<<<<<< HEAD
+
 
 basic-pitch
 pretty_midi
-=======
+
 redis
 librosa
 rq
