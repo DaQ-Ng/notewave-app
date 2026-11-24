@@ -9,3 +9,4 @@ pretty_midi
 redis
 librosa
 rq
+soundfile

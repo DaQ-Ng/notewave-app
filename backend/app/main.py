@@ -21,7 +21,10 @@ import uuid # Make unique id
 import hashlib
 import json
 import redis
+import soundfile
 from rq import Queue
+from rq.exceptions import NoSuchJobError
+from rq.job import Job, JobStatus
 
 
 app = FastAPI(title="NoteWave API")
@@ -35,6 +38,12 @@ MAX_FILE_SIZE = 25 * 1024 * 1024 # 25 MB in bytes
 CHUNK_SIZE = 1024 * 1024 # Read uploads 1 MB at a time
 CACHE_TTL_SECONDS = 86400
 JOB_TTL_SECONDS = 3600
+# Longest song (in seconds) we accept, so analysis can't run the server out of memory.
+# 0 means no limit. Small hosts (e.g. Render's free 512 MB plan) should set this.
+MAX_DURATION_SECONDS = int(os.getenv("MAX_DURATION_SECONDS", "0"))
+# How long the worker may spend on one song before RQ stops it. RQ's default (3 minutes) is too
+# short on slow hosts: a 3-minute song can take several minutes on a fraction of a CPU.
+JOB_TIMEOUT_SECONDS = int(os.getenv("JOB_TIMEOUT_SECONDS", "600"))
 # Where Redis lives. Set REDIS_URL to point somewhere else (see backend/.env.example); defaults to local Redis.
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
@@ -83,6 +92,24 @@ def save_upload_to_temp(upload: UploadFile) -> tuple[str, str]:
         os.remove(tmp.name) # Don't leave a half-written temp file behind
         raise
     return tmp.name, hasher.hexdigest()
+
+def get_duration_seconds(path: str) -> float | None:
+    # Read the song length from the file header without decoding the whole song.
+    # Returns None if the file can't be read; the worker will report that error instead.
+    try:
+        return soundfile.info(path).duration
+    except Exception:
+        return None
+
+def worker_gave_up(job_id: str) -> bool:
+    # If the worker process is killed (for example, out of memory), run_job's except block never
+    # runs, so our job would say "processing" forever. RQ still marks its own copy of the job as
+    # failed, so check that.
+    try:
+        status = Job.fetch(job_id, connection=queue_redis).get_status()
+    except (NoSuchJobError, redis.RedisError):
+        return False
+    return status in (JobStatus.FAILED, JobStatus.STOPPED, JobStatus.CANCELED)
 
 def save_job(job_id: str, job: dict) -> None:
    redis_client.set(f"job:{job_id}", json.dumps(job), ex = JOB_TTL_SECONDS)
@@ -163,6 +190,16 @@ def upload_audio(file: UploadFile):
     path, file_hash = save_upload_to_temp(file)
     job_id = str(uuid.uuid4())
 
+    # Check 5: The song must not be longer than MAX_DURATION_SECONDS (if a limit is set)
+    if MAX_DURATION_SECONDS > 0:
+        duration = get_duration_seconds(path)
+        if duration is not None and duration > MAX_DURATION_SECONDS:
+            os.remove(path)
+            raise HTTPException(
+                status_code=413,
+                detail=f"Song is too long (max {MAX_DURATION_SECONDS // 60}:{MAX_DURATION_SECONDS % 60:02d} on this server)",
+            )
+
     # From here on, Redis can fail. If it does, delete the temp file (otherwise nothing ever would)
     # and tell the client to retry with a 503 instead of crashing with a 500.
     try:
@@ -182,7 +219,8 @@ def upload_audio(file: UploadFile):
 
         # Create a job and run the slow analysis in the background
         save_job(job_id, {"status": "processing", "notes": None, "audio": None})
-        job_queue.enqueue(run_job, job_id, path, file_hash)
+        # Give RQ's job the same id as ours, so /jobs can look it up if the worker dies
+        job_queue.enqueue(run_job, job_id, path, file_hash, job_id=job_id, job_timeout=JOB_TIMEOUT_SECONDS)
     except Exception:
         if os.path.exists(path):
             os.remove(path)
@@ -203,6 +241,11 @@ def get_job(job_id: str):
     job = load_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    if job["status"] == "processing" and worker_gave_up(job_id):
+        logger.warning("Job %s: the worker stopped without finishing; marking it failed", job_id)
+        job = {"status": "failed", "notes": None, "audio": None}
+        save_job(job_id, job)
 
     return{
         "job_id": job_id,

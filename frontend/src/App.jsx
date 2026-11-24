@@ -51,7 +51,7 @@ async function analyzeFile(file, signal) {
   }
 
   if (job.status === "failed") {
-    throw new Error("Analysis failed on the server. Check the worker terminal.");
+    throw new Error("Analysis failed on the server. Try a shorter song, or try again in a moment.");
   }
 
   return job.notes;

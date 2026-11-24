@@ -6,6 +6,7 @@ import os
 import pytest
 import redis
 from fastapi import HTTPException, UploadFile
+from rq.job import Job, JobStatus
 
 from app import main
 
@@ -85,8 +86,25 @@ def test_cached_song_returns_notes_without_new_job(client, fake_redis, enqueued,
     assert len(list(temp_dir.iterdir())) == 1  # the second upload's temp file was deleted
 
 
+def test_upload_rejects_song_over_duration_limit(client, monkeypatch, enqueued, temp_dir):
+    monkeypatch.setattr(main, "MAX_DURATION_SECONDS", 180)
+    monkeypatch.setattr(main, "get_duration_seconds", lambda path: 240.0)
+    response = upload(client)
+    assert response.status_code == 413
+    assert "too long" in response.json()["detail"]
+    assert enqueued == []
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_upload_accepts_song_under_duration_limit(client, monkeypatch, enqueued, temp_dir):
+    monkeypatch.setattr(main, "MAX_DURATION_SECONDS", 180)
+    monkeypatch.setattr(main, "get_duration_seconds", lambda path: 120.0)
+    assert upload(client).status_code == 200
+    assert len(enqueued) == 1
+
+
 def test_upload_503_and_cleans_up_when_queue_fails(client, monkeypatch, temp_dir):
-    def broken_enqueue(*args):
+    def broken_enqueue(*args, **kwargs):
         raise redis.ConnectionError("no redis")
 
     monkeypatch.setattr(main.job_queue, "enqueue", broken_enqueue)
@@ -166,3 +184,16 @@ def test_get_job_returns_saved_job(client):
 
 def test_get_unknown_job_is_404(client):
     assert client.get("/jobs/does-not-exist").status_code == 404
+
+
+def test_job_killed_in_worker_is_reported_failed(client):
+    # Simulate the worker process dying mid-job: our record says "processing",
+    # but RQ has already moved its copy of the job to failed.
+    job_id = upload(client).json()["job_id"]
+    rq_job = Job.create(main.run_job, args=(job_id, "/tmp/x.mp3", "hash"), id=job_id, connection=main.queue_redis)
+    rq_job.save()
+    rq_job.set_status(JobStatus.FAILED)
+
+    body = client.get(f"/jobs/{job_id}").json()
+    assert body["status"] == "failed"
+    assert main.load_job(job_id)["status"] == "failed"  # saved, so the next poll is fast

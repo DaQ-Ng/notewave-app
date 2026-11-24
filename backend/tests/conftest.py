@@ -20,6 +20,8 @@ def fake_redis(monkeypatch):
     # An in-memory Redis, so tests don't need a real Redis server running
     client = fakeredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(main, "redis_client", client)
+    # RQ's own job records live on the raw (bytes) connection, so fake that one too
+    monkeypatch.setattr(main, "queue_redis", fakeredis.FakeRedis())
     return client
 
 
@@ -27,7 +29,7 @@ def fake_redis(monkeypatch):
 def enqueued(monkeypatch):
     # Record queued jobs instead of sending them to a real RQ worker
     calls = []
-    monkeypatch.setattr(main.job_queue, "enqueue", lambda *args: calls.append(args))
+    monkeypatch.setattr(main.job_queue, "enqueue", lambda *args, **kwargs: calls.append(args))
     return calls
 
 
