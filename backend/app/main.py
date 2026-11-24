@@ -1,10 +1,7 @@
 from fastapi import FastAPI, UploadFile, HTTPException
-# basic-pitch is optional: without it, the API still starts but /api/transcribe is off
-try:
-    from .transcription import router as transcription_router
-except ImportError as e:
-    print(f"Transcription disabled ({e}). Install basic-pitch to enable /api/transcribe.")
-    transcription_router = None
+
+from .transcription import router as transcription_router
+
 # Import our function for loading audio information.
 from app.audio_processing import load_audio_info
 # import CORSMiddleware to allow using other websites/ports (in this case, diff localhosts)
